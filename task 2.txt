@@ -1,0 +1,132 @@
+--create table students ( student_id int,	name varchar,	email varchar,	registration_date timestamp );
+
+--create table enrollments(enrollment_id int,	student_id int,	course_id int,	enrolled_on timestamp,	status varchar );
+
+--create table courses(course_id int,	course_name varchar,	category varchar,	created_at timestamp )
+
+copy students from 'D:\Task\SQL Task-3-20250317T153959Z-001.zip\SQL Task-3\students.csv' DELIMITER ',' csv header;
+
+copy enrollments from 'D:\Task\SQL Task-3-20250317T153959Z-001.zip\SQL Task-3\enrollments.csv' DELIMITER ',' csv header;
+
+copy courses from 'D:\Task\SQL Task-3-20250317T153959Z-001.zip\SQL Task-3\cources.csv' DELIMITER ',' csv header;
+
+select s.student_id, s.name, c.course_name, e.status
+from students s
+join enrollments e on s.student_id = e.student_id
+join courses c on e.course_id = c.course_id
+where status = 'Active';
+
+ select c.course_name, count (e.student_id) AS enrollment_count from courses c
+left join enrollments e on c.course_id = e.course_id
+where e.status = 'Active'
+group by c.course_name
+order by enrollment_count desc
+limit 5;
+
+select s.student_id, s.name, count (e.course_id) 
+from students s
+join enrollments e on s.student_id = e.student_id
+group by s.student_id,s.name
+
+select c.course_name
+from courses c
+left join enrollments e on c.course_id = e.course_id
+where e.student_id IS NULL;
+
+select  e.student_id, e.course_id, e.status,
+    case 
+        when e.status = 'active' then 'Active Enrollment'
+        when e.status = 'inactive' then 'Inactive Enrollment'
+        when e.status = 'pending' then 'Pending Enrollment'
+    else 'Other Status'
+    end as enrollment_label
+from enrollments e
+join students s on e.student_id = s.student_id
+join courses c on e.course_id = c.course_id;
+
+select c.course_name, count (e.student_id) from courses c
+join enrollments e on c.course_id = e.course_id
+where e.status = 'Active'  
+group by c.course_name
+ORDER BY enrollment_count desc;
+
+select s.student_id, s.name from students s
+left join enrollments e on s.student_id = e.student_id
+where e.student_id is null;
+
+select s.student_id, s.name from students s
+join enrollments e on s.student_id = e.student_id
+join courses c on  e.course_id = c.course_id
+where c.course_name in ('Python for Data Science', 'SQL Mastery')
+group by s.student_id, s.name
+having count (DISTINCT c.course_name) = 2;
+
+select s.student_id, s.name, e.enrolled_on, c.course_name
+from students s
+join enrollments e on s.student_id = e.student_id
+join courses c on e.course_id = c.course_id
+order by e.enrolled_on desc
+limit 5;
+
+
+select c.category, count (DISTINCT e.student_id) 
+from  courses c join enrollments e on c.course_id = e.course_id
+join students s on  e.student_id = s.student_id
+group by c.category;
+
+
+select DISTINCT s.student_id, s.name, s.email from students s
+join enrollments e on s.student_id = e.student_id
+where e.status = 'completed';
+
+select s.student_id, s.name, s.email from students s
+join enrollments e on s.student_id = e.student_id
+join courses c on e.course_id = c.course_id
+where c.category = 'Programming';
+
+select EXTRACT('year' from  e.enrolled_on) as year, EXTRACT('month' from e.enrolled_on) as  month, count (e.enrollment_id)  total_enrollments
+from enrollments e group by year, month order by year desc, month desc;
+
+
+select s.student_id, s.name, s.email from students s
+join enrollments e on s.student_id = e.student_id
+left join courses c on e.course_id = c.course_id
+where e.status != 'completed'
+group by s.student_id, s.name, s.email
+having count (e.enrollment_id) > 0;
+
+
+select min(e.enrolled_on) , max(e.enrolled_on) from enrollments e;
+
+
+select s.student_id, s.name, s.email from students s
+join enrollments e on s.student_id = e.student_id
+where e.enrolled_on >= CURRENT_DATE - INTERVAL '6 months';
+
+
+select c.course_id, c.course_name, count (e.enrollment_id)  from courses c
+join enrollments e on c.course_id = e.course_id
+group by c.course_id, c.course_name
+having count (e.enrollment_id) > 5;
+
+
+
+select s.student_id, s.name, s.email, MAX(e.enrolled_on) 
+from students s
+join enrollments e on s.student_id = e.student_id
+group by s.student_id, s.name, s.email;
+
+
+select s.student_id, s.name, s.email
+ from students s
+join enrollments e on s.student_id = e.student_id
+where e.status = 'dropped';
+
+
+select c.course_id, c.course_name, COUNT(e.enrollment_id) 
+from courses c
+join enrollments e on c.course_id = e.course_id
+group by c.course_id, c.course_name
+order by total_enrollments DESC
+limit 1;
+
