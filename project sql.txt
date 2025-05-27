@@ -1,0 +1,194 @@
+create table customers (customer_id serial primary key ,first_name varchar,	last_name varchar,	date_of_birth date,	gender varchar,	contact_number varchar,	email varchar,	address varchar,
+aadhaar_number bigint,	pan_number varchar) ;
+
+create table agents (agent_id serial primary key ,first_name varchar,	last_name varchar,	contact_number varchar,	email varchar,	commission_rate real) ;
+
+create table policy (policy_id serial primary key , policy_type varchar,	coverage_amount  int,	premium_amount int,	start_date date,	end_date date,	customer_id int references customers(customer_id),	
+agent_id int references agents (agent_id),	approved_by varchar);
+
+create table claims (claim_id serial primary key ,claim_date date,	amount_claimed int,	status varchar,	policy_id int references policies (policy_id),	approved_by varchar,);
+
+create table payments (payment_id serial primary key ,payment_date date,	amount int,	payment_method varchar,	payment_uuid varchar,	policy_id int);
+
+create or replace function claim_status_update()
+returns trigger as $$
+begin
+if New.amount_claimed < 10000 then
+   New.status = 'Approved';
+   elseif New.amount_claimed > 20000 then
+   New.status = 'rejected';
+   else
+   New.status = 'pending';
+   end  if;
+   return new;
+end;
+$$ language plpgsql;
+
+create trigger claimstatus
+before insert on claims
+for each row
+execute function claim_status_update()
+
+insert into claims (claim_id, claim_date, amount_claimed,policy_id, approved_by) values (2002,'2025-04-15',15000,451,'Nakul Mehta')
+
+select * from claims where claim_id =2002;
+
+
+select a.agent_id,a.first_name || ' ' || a.last_name as agent_name, count (p.policy_id) as policies_sold from agents a
+left join policies p on a.agent_id = p.agent_id group by a.agent_id, agent_name order by policies_sold desc;
+
+select status, count(claim_id) as total_claims from claims group by status order by total_claims desc;
+
+select c.customer_id, c.first_name || ' ' || c.last_name as customer_name, p.policy_id,  pa.payment_id, pa.payment_date, pa.amount, pa.payment_method, pa.payment_uuid
+from payments pa
+join policies p on pa.policy_id = p.policy_id
+join customers c on p.customer_id = c.customer_id
+order by c.customer_id, p.policy_id, pa.payment_date;
+
+
+create procedure policy_sold_by_agents (inout agentid int default null, inout agentname varchar default null, inout policysold int default null)
+Language plpgsql as $$
+begin
+select a.agent_id, first_name || || last_name as agent_name, count(p.policy_id) as policy_sold into agentid, agentname, policysold
+from agents a left join policies p on a.agent_id = p.agent_id
+group by a.agent id, agent_name order by policy_sold desc;
+end
+$$;
+
+call policy_sold_by_agents()
+
+
+
+alter table policies add column isexpired Boolean default 'false'
+
+create or replace function expire_policy()
+returns trigger as $$
+begin
+If New.end_date < current_date then new.isexpired = 'True';
+else new.isexpired = 'False';
+end if;
+return new;
+end;
+$$ language plpgsql;
+
+
+
+create or replace function prevent_duplicate()
+returns trigger as $$
+begin
+If exists(
+select * from claims where policy_id = new.policy_id
+and claim_date = new.claim_date) then Raise exception 'Duplicate claim are not allowed';
+end if;
+return new;
+end;
+$$ language plpgsql;
+
+create trigger check_duplicate
+before insert on claims
+for each row
+execute function prevent_duplicate()
+
+
+
+create table agent_commisions(
+commision_id serial primary key,
+agent_id int references agents (agent_id),
+policy_id int references policies (policy_id),
+commision real,
+rec_date timestamp default current_timestamp)
+
+create or replace function auto_commision_cal()
+returns trigger as $$
+declare rate real;
+begin
+select commission_rate into rate from agents where agent_id = new.agent_id;
+insert into agent_commisions (agent_id, policy_id, commision) values (new.agent_id, new.policy_id, new.premium_amount * rate);
+return new;
+end;
+$$ language plpgsql;
+
+create trigger commision_cal 
+after insert on policies
+for each row
+execute function auto_commision_cal()
+
+
+create or replace function auto_approve_claim()
+returns trigger as $$
+begin
+if new.claim_amount < 10000 then
+new.claim_status := 'approved';
+end if;
+return new;
+end;
+$$ language plpgsql;
+
+create trigger auto_approve_claim
+before insert on claims
+for each row
+execute function auto_approve_claim();
+
+
+
+create procedure generate_report (inout fis_date date default null, inout last_date date default null)
+LANGUAGE plpgsql as $
+declare
+total_policies int;
+total_claims int;
+total_payments int;
+begin
+select count(*) into total_policies from policies where start_date between fis_date and last_date;
+select count(*) into total_claims from claims where claim_date between fis_date and last_date;
+select count(*) into total_payments from payments where payment_date between fis_date and last_date;
+Raise exception 'Generate Report: Total_policy: %, Total_Claims: %, Total_Payments: %', total_policies, total_claims, total_payments;
+end;
+$$;
+
+call generate_report('2020-01-01', '2022-12-31')
+
+
+
+create or replace procedure process_recurring_payments()
+language plpgsql
+as $$
+begin
+insert into payments (customer_id, policy_id, amount, payment_date, is_full_payment)
+select customer_id, policy_id, amount / installments, current_date, false
+from policy_installments
+where next_due_date = current_date and remaining_installments > 0;
+update policy_installments
+set
+remaining_installments = remaining_installments - 1,
+next_due_date = current_date + interval '1 month'
+where next_due_date = current_date and remaining_installments > 0;
+end;
+$$;
+
+call process_recurring_payments();
+
+
+
+create or replace procedure generate_daily_report()
+language plpgsql
+as $$
+declare
+d date;
+begin
+for d in select generate_series(current_date - interval '7 days', current_date, interval '1 day')::dateloop
+insert into daily_report (report_date, policy_count, claim_count, payment_count)
+values (d,
+(select count(*) from policies where policy_start_date = d),
+(select count(*) from claims where date(claim_status_date) = d),
+(select count(*) from payments where payment_date = d)
+);
+end loop;
+end;
+$$;
+
+call generate_daily_report();
+
+
+
+
+
